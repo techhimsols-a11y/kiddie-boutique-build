@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { products } from "@/data/products";
+// import { products } from "@/data/products";
+import { listProducts } from "@/lib/api/products";
 import { Heart, Star, ShoppingCart, Filter } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
@@ -26,8 +28,13 @@ const ProductList = () => {
   const allSizes = ['Newborn', '3M', '6M', '9M', '12M', '18M', '24M', '2T', '3T', '4T', '5T', '6', '7', '8', '9', '10'];
   const allColors = ['White', 'Cream', 'Pink', 'Purple', 'Blue', 'Green', 'Yellow', 'Red', 'Navy', 'Gray', 'Brown'];
 
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ["products"],
+    queryFn: listProducts,
+  });
+
   const filteredProducts = useMemo(() => {
-    let filtered = products.filter(product => {
+    let filtered = products.filter((product: any) => {
       // Category filter
       if (filters.categories.length > 0 && !filters.categories.includes(product.category)) {
         return false;
@@ -40,13 +47,13 @@ const ProductList = () => {
 
       // Size filter
       if (filters.sizes.length > 0) {
-        const hasSize = filters.sizes.some(size => product.sizes.includes(size));
+        const hasSize = filters.sizes.some(size => (product.sizes || []).includes(size));
         if (!hasSize) return false;
       }
 
       // Color filter
       if (filters.colors.length > 0) {
-        const hasColor = filters.colors.some(color => product.colors.includes(color));
+        const hasColor = filters.colors.some(color => (product.colors || []).includes(color));
         if (!hasColor) return false;
       }
 
@@ -62,7 +69,7 @@ const ProductList = () => {
         filtered.sort((a, b) => b.price - a.price);
         break;
       case 'rating':
-        filtered.sort((a, b) => b.rating - a.rating);
+        filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
         break;
       case 'newest':
         filtered.sort((a, b) => (b.category === 'new' ? 1 : 0) - (a.category === 'new' ? 1 : 0));
@@ -72,7 +79,7 @@ const ProductList = () => {
     }
 
     return filtered;
-  }, [filters, sortBy]);
+  }, [filters, sortBy, products]);
 
   const updateFilter = (type: string, value: any) => {
     setFilters(prev => ({
@@ -225,11 +232,11 @@ const ProductList = () => {
               <Card key={product.id} className="group hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
                 <div className="relative overflow-hidden rounded-t-lg">
                   <img 
-                    src={product.images[0]}
+                    src={(product.images && product.images[0]) || (product.image_url) || "https://placehold.co/600x400"}
                     alt={product.name}
                     className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-300"
                   />
-                  {product.originalPrice && (
+                  {product.original_price && (
                     <Badge className="absolute top-3 left-3 bg-destructive">
                       Sale
                     </Badge>
@@ -248,16 +255,16 @@ const ProductList = () => {
                   <div className="flex items-center mb-3">
                     <div className="flex items-center">
                       <Star className="h-4 w-4 fill-current text-yellow-400" />
-                      <span className="ml-1 text-sm">{product.rating}</span>
-                      <span className="ml-1 text-sm text-muted-foreground">({product.reviewCount})</span>
+                      <span className="ml-1 text-sm">{product.rating || 0}</span>
+                      <span className="ml-1 text-sm text-muted-foreground">({product.review_count || 0})</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <span className="text-lg font-bold">${product.price}</span>
-                      {product.originalPrice && (
+                      {product.original_price && (
                         <span className="text-sm text-muted-foreground line-through">
-                          ${product.originalPrice}
+                          ${product.original_price}
                         </span>
                       )}
                     </div>
@@ -271,7 +278,10 @@ const ProductList = () => {
             ))}
           </div>
 
-          {filteredProducts.length === 0 && (
+          {isLoading && (
+            <div className="text-center py-12">Loading products...</div>
+          )}
+          {!isLoading && filteredProducts.length === 0 && (
             <div className="text-center py-12">
               <p className="text-lg text-muted-foreground mb-4">No products found matching your filters.</p>
               <Button onClick={() => setFilters({ categories: [], priceRange: [0, 100], sizes: [], colors: [] })}>

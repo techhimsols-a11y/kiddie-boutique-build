@@ -1,0 +1,1 @@
+# Copy to frontend/.env.local and fill values\nVITE_SUPABASE_URL=YOUR_SUPABASE_URL\nVITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY\n
