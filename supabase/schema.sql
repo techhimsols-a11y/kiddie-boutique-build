@@ -39,6 +39,14 @@ create table if not exists public.orders (
   created_at timestamp with time zone default now()
 );
 
+create table if not exists public.order_items (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references public.orders(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete restrict,
+  quantity integer not null check (quantity > 0),
+  price numeric(10,2) not null
+);
+
 create table if not exists public.cart_items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users(id) on delete cascade,
@@ -55,6 +63,7 @@ alter table public.users enable row level security;
 alter table public.products enable row level security;
 alter table public.orders enable row level security;
 alter table public.cart_items enable row level security;
+alter table public.order_items enable row level security;
 
 -- Users table policies
 create policy if not exists "Users are viewable by owner" on public.users
@@ -91,6 +100,17 @@ create policy if not exists "Users can view own orders" on public.orders
 
 create policy if not exists "Users can insert own orders" on public.orders
   for insert with check (user_id = auth.uid());
+
+-- Order items: readable to order owners or admins, insert tied to own orders
+create policy if not exists "Users can view order_items of own orders" on public.order_items
+  for select using (
+    exists(select 1 from public.orders o where o.id = order_id and (o.user_id = auth.uid() or public.is_admin(auth.uid())))
+  );
+
+create policy if not exists "Users can insert order_items for own orders" on public.order_items
+  for insert with check (
+    exists(select 1 from public.orders o where o.id = order_id and o.user_id = auth.uid())
+  );
 
 -- Cart items: owner only
 create policy if not exists "Users manage own cart" on public.cart_items

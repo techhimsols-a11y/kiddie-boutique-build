@@ -2,11 +2,17 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { products, categories } from "@/data/products";
 import { Heart, Star, ShoppingCart } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { listProducts, Product } from "@/lib/api/products";
 
 const HomePage = () => {
-  const featuredProducts = products.filter(p => p.featured);
+  const { data: products = [], isLoading, isError } = useQuery<Product[]>({
+    queryKey: ["products", "home"],
+    queryFn: listProducts,
+  });
+
+  const featuredProducts = (products || []).filter((p) => !!p.featured).slice(0, 8);
 
   return (
     <div>
@@ -43,38 +49,6 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* Categories Section */}
-      <section className="py-16 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Shop by Category</h2>
-            <p className="text-lg text-muted-foreground">Find the perfect clothes for every stage</p>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {categories.map((category) => (
-              <Link key={category.id} to={`/products?category=${category.id}`}>
-                <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-                  <CardContent className="p-6 text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <span className="text-2xl">
-                        {category.id === 'baby' && '👶'}
-                        {category.id === 'toddler' && '🧸'}
-                        {category.id === 'boys' && '👦'}
-                        {category.id === 'girls' && '👧'}
-                        {category.id === 'new' && '✨'}
-                        {category.id === 'sale' && '🏷️'}
-                      </span>
-                    </div>
-                    <h3 className="font-semibold mb-2">{category.name}</h3>
-                    <p className="text-sm text-muted-foreground">{category.description}</p>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Featured Products */}
       <section className="py-16">
         <div className="container mx-auto px-4">
@@ -82,60 +56,81 @@ const HomePage = () => {
             <h2 className="text-3xl md:text-4xl font-bold mb-4">Featured Products</h2>
             <p className="text-lg text-muted-foreground">Our most loved items by parents and kids</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {featuredProducts.map((product) => (
-              <Card key={product.id} className="group hover:shadow-xl transition-all duration-300 hover:-translate-y-2">
-                <div className="relative overflow-hidden rounded-t-lg">
-                  <img 
-                    src={product.images[0]}
-                    alt={product.name}
-                    className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  {product.originalPrice && (
-                    <Badge className="absolute top-3 left-3 bg-destructive">
-                      Sale
-                    </Badge>
-                  )}
-                  <Button 
-                    variant="outline" 
-                    size="icon"
-                    className="absolute top-3 right-3 bg-white/90 hover:bg-white"
-                  >
-                    <Heart className="h-4 w-4" />
-                  </Button>
+
+          {isLoading && (
+            <div className="text-center py-12">Loading featured products...</div>
+          )}
+          {isError && (
+            <div className="text-center py-12 text-destructive">Failed to load products.</div>
+          )}
+
+          {!isLoading && !isError && (
+            <>
+              {featuredProducts.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  No featured products yet. Check back soon!
                 </div>
-                <CardContent className="p-4">
-                  <h3 className="font-semibold mb-2 line-clamp-2">{product.name}</h3>
-                  <div className="flex items-center mb-2">
-                    <div className="flex items-center">
-                      <Star className="h-4 w-4 fill-current text-yellow-400" />
-                      <span className="ml-1 text-sm">{product.rating}</span>
-                      <span className="ml-1 text-sm text-muted-foreground">({product.reviewCount})</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-lg font-bold">${product.price}</span>
-                      {product.originalPrice && (
-                        <span className="text-sm text-muted-foreground line-through">
-                          ${product.originalPrice}
-                        </span>
-                      )}
-                    </div>
-                    <Button size="sm" className="gap-2">
-                      <ShoppingCart className="h-4 w-4" />
-                      Add
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <div className="text-center mt-12">
-            <Button size="lg" variant="outline" asChild>
-              <Link to="/products">View All Products</Link>
-            </Button>
-          </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {featuredProducts.map((product) => (
+                    <Card key={product.id} className="group hover:shadow-xl transition-all duration-300 hover:-translate-y-2">
+                      <div className="relative overflow-hidden rounded-t-lg">
+                        <img 
+                          src={(product.images && product.images[0]) || product.image_url || "https://placehold.co/600x400"}
+                          alt={product.name}
+                          className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        {product.original_price && (
+                          <Badge className="absolute top-3 left-3 bg-destructive">
+                            Sale
+                          </Badge>
+                        )}
+                        <Button 
+                          variant="outline" 
+                          size="icon"
+                          className="absolute top-3 right-3 bg-white/90 hover:bg-white"
+                        >
+                          <Heart className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <CardContent className="p-4">
+                        <h3 className="font-semibold mb-2 line-clamp-2">{product.name}</h3>
+                        <div className="flex items-center mb-2">
+                          <div className="flex items-center">
+                            <Star className="h-4 w-4 fill-current text-yellow-400" />
+                            <span className="ml-1 text-sm">{product.rating || 0}</span>
+                            <span className="ml-1 text-sm text-muted-foreground">({product.review_count || 0})</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-lg font-bold">${product.price}</span>
+                            {product.original_price && (
+                              <span className="text-sm text-muted-foreground line-through">
+                                ${product.original_price}
+                              </span>
+                            )}
+                          </div>
+                          <Button size="sm" className="gap-2" asChild>
+                            <Link to={`/product/${product.id}`}>
+                              <ShoppingCart className="h-4 w-4" />
+                              View
+                            </Link>
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              <div className="text-center mt-12">
+                <Button size="lg" variant="outline" asChild>
+                  <Link to="/products">View All Products</Link>
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </section>
 
