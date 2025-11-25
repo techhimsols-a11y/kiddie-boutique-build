@@ -251,7 +251,7 @@ const ProductList = () => {
                 </div>
                 <CardContent className="p-4">
                   <h3 className="font-semibold mb-2 line-clamp-2">{product.name}</h3>
-                  <p className="text-sm text-muted-foreground mb-2">{product.ageGroup}</p>
+                  <p className="text-sm text-muted-foreground mb-2">{product.age_group}</p>
                   <div className="flex items-center mb-3">
                     <div className="flex items-center">
                       <Star className="h-4 w-4 fill-current text-yellow-400" />
