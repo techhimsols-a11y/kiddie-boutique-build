@@ -1,15 +1,19 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getProduct, Product } from "@/lib/api/products";
+import { addToCart } from "@/lib/api/cart";
+import { useToast } from "@/hooks/use-toast";
 import { Heart, ShoppingCart, Star, Plus, Minus, Share } from "lucide-react";
 
 const ProductDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
   const { data: product, isLoading, isError } = useQuery<Product | null>({
     queryKey: ["product", id],
@@ -21,6 +25,59 @@ const ProductDetail = () => {
   const [selectedColor, setSelectedColor] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState(0);
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
+
+  const handleAddToCart = async () => {
+    if (!product) return;
+
+    // Validate size selection if sizes are available
+    if (product.sizes && product.sizes.length > 0 && !selectedSize) {
+      toast({
+        title: "Size Required",
+        description: "Please select a size before adding to cart",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate color selection if colors are available
+    if (product.colors && product.colors.length > 0 && !selectedColor) {
+      toast({
+        title: "Color Required",
+        description: "Please select a color before adding to cart",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsAddingToCart(true);
+      await addToCart({
+        product_id: product.id,
+        quantity,
+        size: selectedSize || undefined,
+        color: selectedColor || undefined,
+      });
+
+      toast({
+        title: "Added to Cart",
+        description: `${product.name} has been added to your cart`,
+      });
+
+      // Optionally navigate to cart after a delay
+      setTimeout(() => {
+        navigate('/cart');
+      }, 1000);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add item to cart. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAddingToCart(false);
+    }
+  };
 
   if (!id) {
     return (
@@ -192,16 +249,24 @@ const ProductDetail = () => {
             <Button 
               size="lg" 
               className="w-full text-lg h-12"
-              disabled={(product.sizes && product.sizes.length > 0 && !selectedSize) || (product.colors && product.colors.length > 0 && !selectedColor)}
+              onClick={handleAddToCart}
+              disabled={isAddingToCart || (product.stock !== null && product.stock <= 0)}
             >
               <ShoppingCart className="mr-2 h-5 w-5" />
-              Add to Cart - ${(Number(product.price) * quantity).toFixed(2)}
+              {isAddingToCart ? "Adding..." : `Add to Cart - $${(Number(product.price) * quantity).toFixed(2)}`}
             </Button>
             <Button variant="outline" size="lg" className="w-full text-lg h-12">
               <Heart className="mr-2 h-5 w-5" />
               Add to Wishlist
             </Button>
           </div>
+
+          {product.stock !== null && product.stock <= 0 && (
+            <Badge variant="destructive" className="text-sm">Out of Stock</Badge>
+          )}
+          {product.stock !== null && product.stock > 0 && product.stock < 10 && (
+            <p className="text-sm text-orange-500">Only {product.stock} left in stock!</p>
+          )}
 
           {/* Product Features */}
           <div className="space-y-2 text-sm">
