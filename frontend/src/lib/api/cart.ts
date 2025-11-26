@@ -1,4 +1,4 @@
-import { supabase } from "../supabaseClient";
+import { supabase } from "@/integrations/supabase/client";
 
 const API_URL = (import.meta.env.VITE_API_URL as string) || "http://localhost:4000";
 

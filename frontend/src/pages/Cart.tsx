@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,70 +6,99 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { getCart, updateCartItem, removeCartItem, type CartItem as APICartItem } from "@/lib/api/cart";
 
-interface CartItem {
+interface CartItemDisplay {
   id: string;
   name: string;
   price: number;
   originalPrice?: number;
   image: string;
-  size: string;
-  color: string;
+  size?: string;
+  color?: string;
   quantity: number;
   inStock: boolean;
+  productId: string;
 }
 
 const Cart = () => {
-  const [cartItems, setCartItems] = useState<CartItem[]>([
-    {
-      id: '1',
-      name: 'Rainbow Unicorn Dress',
-      price: 29.99,
-      originalPrice: 39.99,
-      image: 'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=200&h=200&fit=crop',
-      size: '5T',
-      color: 'Pink',
-      quantity: 1,
-      inStock: true
-    },
-    {
-      id: '2',
-      name: 'Dinosaur Adventure T-Shirt',
-      price: 18.99,
-      image: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=200&h=200&fit=crop',
-      size: '4T',
-      color: 'Green',
-      quantity: 2,
-      inStock: true
-    },
-    {
-      id: '3',
-      name: 'Cozy Bear Hoodie',
-      price: 35.99,
-      image: 'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=200&h=200&fit=crop',
-      size: '6',
-      color: 'Brown',
-      quantity: 1,
-      inStock: false
-    }
-  ]);
-
+  const [cartItems, setCartItems] = useState<CartItemDisplay[]>([]);
+  const [loading, setLoading] = useState(true);
   const [promoCode, setPromoCode] = useState('');
+  const { toast } = useToast();
 
-  const updateQuantity = (id: string, newQuantity: number) => {
+  useEffect(() => {
+    loadCart();
+  }, []);
+
+  const loadCart = async () => {
+    try {
+      setLoading(true);
+      const items = await getCart();
+      const displayItems: CartItemDisplay[] = items.map((item: APICartItem) => ({
+        id: item.id,
+        name: item.product?.name || 'Unknown Product',
+        price: item.product?.price || 0,
+        image: item.product?.image_url || '/placeholder.svg',
+        size: item.size || undefined,
+        color: item.color || undefined,
+        quantity: item.quantity,
+        inStock: (item.product?.stock || 0) > 0,
+        productId: item.product_id,
+      }));
+      setCartItems(displayItems);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load cart items",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateQuantity = async (id: string, newQuantity: number) => {
     if (newQuantity === 0) {
       removeItem(id);
       return;
     }
-    setCartItems(items =>
-      items.map(item =>
-        item.id === id ? { ...item, quantity: newQuantity } : item
-      )
-    );
+    try {
+      await updateCartItem(id, newQuantity);
+      setCartItems(items =>
+        items.map(item =>
+          item.id === id ? { ...item, quantity: newQuantity } : item
+        )
+      );
+      toast({
+        title: "Updated",
+        description: "Cart item updated successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update cart item",
+        variant: "destructive",
+      });
+    }
   };
 
-  const removeItem = (id: string) => {
-    setCartItems(items => items.filter(item => item.id !== id));
+  const removeItem = async (id: string) => {
+    try {
+      await removeCartItem(id);
+      setCartItems(items => items.filter(item => item.id !== id));
+      toast({
+        title: "Removed",
+        description: "Item removed from cart",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to remove cart item",
+        variant: "destructive",
+      });
+    }
   };
 
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -80,6 +109,14 @@ const Cart = () => {
   const shipping = subtotal > 50 ? 0 : 5.99;
   const tax = subtotal * 0.08;
   const total = subtotal + shipping + tax;
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-16 text-center">
+        <p className="text-lg">Loading cart...</p>
+      </div>
+    );
+  }
 
   if (cartItems.length === 0) {
     return (
@@ -104,7 +141,7 @@ const Cart = () => {
         {/* Cart Items */}
         <div className="lg:col-span-2 space-y-4">
           {cartItems.map((item) => (
-            <Card key={`${item.id}-${item.size}-${item.color}`}>
+            <Card key={item.id}>
               <CardContent className="p-6">
                 <div className="flex items-start space-x-4">
                   <img 
@@ -117,8 +154,8 @@ const Cart = () => {
                       <div>
                         <h3 className="font-semibold text-lg">{item.name}</h3>
                         <div className="flex items-center space-x-4 mt-1 text-sm text-muted-foreground">
-                          <span>Size: {item.size}</span>
-                          <span>Color: {item.color}</span>
+                          {item.size && <span>Size: {item.size}</span>}
+                          {item.color && <span>Color: {item.color}</span>}
                         </div>
                         {!item.inStock && (
                           <Badge variant="destructive" className="mt-2">
@@ -137,10 +174,10 @@ const Cart = () => {
 
                     <div className="flex items-center justify-between mt-4">
                       <div className="flex items-center space-x-4">
-                        <span className="text-lg font-bold">${item.price}</span>
+                        <span className="text-lg font-bold">${item.price.toFixed(2)}</span>
                         {item.originalPrice && (
                           <span className="text-sm text-muted-foreground line-through">
-                            ${item.originalPrice}
+                            ${item.originalPrice.toFixed(2)}
                           </span>
                         )}
                       </div>
