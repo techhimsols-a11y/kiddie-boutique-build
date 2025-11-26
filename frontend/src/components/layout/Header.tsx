@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { ShoppingCart, Heart, Search, Menu, User } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ShoppingCart, Heart, Search, Menu, User, LogOut } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import type { Session } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +16,27 @@ import { Link } from "react-router-dom";
 
 const Header = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+
+  useEffect(() => {
+    // Set up auth state listener first
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+      }
+    );
+
+    // Then check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
 
   const navigation = [
     { name: "New Arrivals", href: "/products?category=new" },
@@ -114,18 +137,24 @@ const Header = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem>
-                  <Link to="/login">Sign In</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Link to="/register">Create Account</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Link to="/account">My Account</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Link to="/admin">Admin Dashboard</Link>
-                </DropdownMenuItem>
+                {session ? (
+                  <>
+                    <DropdownMenuItem>
+                      <Link to="/account">My Account</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <Link to="/admin">Admin Dashboard</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleSignOut}>
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  <DropdownMenuItem>
+                    <Link to="/auth">Sign In / Sign Up</Link>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
