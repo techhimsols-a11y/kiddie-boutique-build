@@ -1,265 +1,273 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Trash2, Plus, Minus, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
-
-interface CartItem {
-  id: string;
-  name: string;
-  price: number;
-  originalPrice?: number;
-  image: string;
-  size: string;
-  color: string;
-  quantity: number;
-  inStock: boolean;
-}
+import { Card, CardContent } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
+import { getCart, updateCartItem, removeCartItem, CartItem } from "@/lib/api/cart";
+import { useToast } from "@/hooks/use-toast";
+import type { Session } from "@supabase/supabase-js";
 
 const Cart = () => {
-  const [cartItems, setCartItems] = useState<CartItem[]>([
-    {
-      id: '1',
-      name: 'Rainbow Unicorn Dress',
-      price: 29.99,
-      originalPrice: 39.99,
-      image: 'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=200&h=200&fit=crop',
-      size: '5T',
-      color: 'Pink',
-      quantity: 1,
-      inStock: true
-    },
-    {
-      id: '2',
-      name: 'Dinosaur Adventure T-Shirt',
-      price: 18.99,
-      image: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=200&h=200&fit=crop',
-      size: '4T',
-      color: 'Green',
-      quantity: 2,
-      inStock: true
-    },
-    {
-      id: '3',
-      name: 'Cozy Bear Hoodie',
-      price: 35.99,
-      image: 'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=200&h=200&fit=crop',
-      size: '6',
-      color: 'Brown',
-      quantity: 1,
-      inStock: false
-    }
-  ]);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [session, setSession] = useState<Session | null>(null);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [promoCode, setPromoCode] = useState("");
 
-  const [promoCode, setPromoCode] = useState('');
-
-  const updateQuantity = (id: string, newQuantity: number) => {
-    if (newQuantity === 0) {
-      removeItem(id);
-      return;
-    }
-    setCartItems(items =>
-      items.map(item =>
-        item.id === id ? { ...item, quantity: newQuantity } : item
-      )
+  useEffect(() => {
+    // Set up auth state listener first
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, newSession) => {
+        setSession(newSession);
+        if (!newSession) {
+          navigate("/auth");
+        } else {
+          // Load cart when user is authenticated
+          setTimeout(() => {
+            loadCart();
+          }, 0);
+        }
+      }
     );
+
+    // Then check for existing session
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      if (!currentSession) {
+        navigate("/auth");
+      } else {
+        loadCart();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const loadCart = async () => {
+    try {
+      setLoading(true);
+      const items = await getCart();
+      setCartItems(items);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load cart items",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const removeItem = (id: string) => {
-    setCartItems(items => items.filter(item => item.id !== id));
+  const updateQuantity = async (id: string, newQuantity: number) => {
+    if (newQuantity < 1) return;
+    
+    try {
+      await updateCartItem(id, newQuantity);
+      setCartItems(items =>
+        items.map(item =>
+          item.id === id ? { ...item, quantity: newQuantity } : item
+        )
+      );
+      toast({
+        title: "Updated",
+        description: "Cart item quantity updated",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update quantity",
+        variant: "destructive",
+      });
+    }
   };
 
-  const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const savings = cartItems.reduce((sum, item) => {
-    const originalPrice = item.originalPrice || item.price;
-    return sum + ((originalPrice - item.price) * item.quantity);
-  }, 0);
+  const removeItem = async (id: string) => {
+    try {
+      await removeCartItem(id);
+      setCartItems(items => items.filter(item => item.id !== id));
+      toast({
+        title: "Removed",
+        description: "Item removed from cart",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to remove item",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Loading cart...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null;
+  }
+
+  const subtotal = cartItems.reduce(
+    (sum, item) => sum + (item.product?.price || 0) * item.quantity,
+    0
+  );
+  const savings = 0;
   const shipping = subtotal > 50 ? 0 : 5.99;
   const tax = subtotal * 0.08;
-  const total = subtotal + shipping + tax;
+  const total = subtotal - savings + shipping + tax;
 
   if (cartItems.length === 0) {
     return (
-      <div className="container mx-auto px-4 py-16 text-center">
-        <ShoppingBag className="h-24 w-24 mx-auto mb-6 text-muted-foreground" />
-        <h1 className="text-3xl font-bold mb-4">Your cart is empty</h1>
-        <p className="text-lg text-muted-foreground mb-8">
-          Looks like you haven't added any items to your cart yet.
-        </p>
-        <Button size="lg" asChild>
-          <Link to="/products">Start Shopping</Link>
-        </Button>
+      <div className="min-h-screen flex items-center justify-center bg-muted/20">
+        <div className="text-center py-12">
+          <ShoppingBag className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Your cart is empty</h2>
+          <p className="text-muted-foreground mb-6">
+            Add some adorable items to get started!
+          </p>
+          <Button onClick={() => navigate("/products")}>
+            Continue Shopping
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Shopping Cart</h1>
+    <div className="min-h-screen bg-muted/20 py-8">
+      <div className="container mx-auto px-4">
+        <h1 className="text-3xl font-bold mb-8">Shopping Cart</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Cart Items */}
-        <div className="lg:col-span-2 space-y-4">
-          {cartItems.map((item) => (
-            <Card key={`${item.id}-${item.size}-${item.color}`}>
-              <CardContent className="p-6">
-                <div className="flex items-start space-x-4">
-                  <img 
-                    src={item.image}
-                    alt={item.name}
-                    className="w-24 h-24 object-cover rounded-lg"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-semibold text-lg">{item.name}</h3>
-                        <div className="flex items-center space-x-4 mt-1 text-sm text-muted-foreground">
-                          <span>Size: {item.size}</span>
-                          <span>Color: {item.color}</span>
+        <div className="grid gap-8 lg:grid-cols-3">
+          {/* Cart Items */}
+          <div className="lg:col-span-2 space-y-4">
+            {cartItems.map((item) => (
+              <Card key={item.id}>
+                <CardContent className="p-6">
+                  <div className="flex gap-4">
+                    <img
+                      src={item.product?.image_url || "/placeholder.svg"}
+                      alt={item.product?.name}
+                      className="h-24 w-24 rounded-lg object-cover"
+                    />
+                    <div className="flex-1">
+                      <div className="flex justify-between">
+                        <div>
+                          <h3 className="font-semibold">{item.product?.name}</h3>
+                          {item.size && (
+                            <p className="text-sm text-muted-foreground">
+                              Size: {item.size}
+                            </p>
+                          )}
+                          {item.color && (
+                            <p className="text-sm text-muted-foreground">
+                              Color: {item.color}
+                            </p>
+                          )}
+                          <p className="font-semibold mt-2">
+                            ${item.product?.price.toFixed(2)}
+                          </p>
                         </div>
-                        {!item.inStock && (
-                          <Badge variant="destructive" className="mt-2">
-                            Out of Stock
-                          </Badge>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeItem(item.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeItem(item.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    <div className="flex items-center justify-between mt-4">
-                      <div className="flex items-center space-x-4">
-                        <span className="text-lg font-bold">${item.price}</span>
-                        {item.originalPrice && (
-                          <span className="text-sm text-muted-foreground line-through">
-                            ${item.originalPrice}
-                          </span>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center gap-2 mt-4">
                         <Button
                           variant="outline"
                           size="icon"
                           onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          disabled={!item.inStock}
+                          disabled={item.quantity <= 1}
                         >
                           <Minus className="h-4 w-4" />
                         </Button>
-                        <span className="w-12 text-center font-semibold">{item.quantity}</span>
+                        <span className="w-12 text-center">{item.quantity}</span>
                         <Button
                           variant="outline"
                           size="icon"
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          disabled={!item.inStock}
                         >
                           <Plus className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
 
-        {/* Order Summary */}
-        <div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Order Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Promo Code */}
-              <div>
-                <div className="flex space-x-2">
+          {/* Order Summary */}
+          <div className="lg:col-span-1">
+            <Card className="sticky top-24">
+              <CardContent className="p-6 space-y-4">
+                <h2 className="text-xl font-bold">Order Summary</h2>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span>${subtotal.toFixed(2)}</span>
+                  </div>
+                  {savings > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>Savings</span>
+                      <span>-${savings.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Shipping</span>
+                    <span>{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tax</span>
+                    <span>${tax.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total</span>
+                  <span>${total.toFixed(2)}</span>
+                </div>
+
+                <div className="space-y-2">
                   <Input
                     placeholder="Promo code"
                     value={promoCode}
                     onChange={(e) => setPromoCode(e.target.value)}
                   />
-                  <Button variant="outline">Apply</Button>
+                  <Button variant="outline" className="w-full">
+                    Apply
+                  </Button>
                 </div>
-              </div>
 
-              <Separator />
-
-              {/* Price Breakdown */}
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>Subtotal ({cartItems.length} items)</span>
-                  <span>${subtotal.toFixed(2)}</span>
-                </div>
-                {savings > 0 && (
-                  <div className="flex justify-between text-success">
-                    <span>Savings</span>
-                    <span>-${savings.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span>Shipping</span>
-                  <span>
-                    {shipping === 0 ? (
-                      <span className="text-success">FREE</span>
-                    ) : (
-                      `$${shipping.toFixed(2)}`
-                    )}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tax</span>
-                  <span>${tax.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="flex justify-between text-lg font-bold">
-                <span>Total</span>
-                <span>${total.toFixed(2)}</span>
-              </div>
-
-              {shipping > 0 && (
-                <div className="text-sm text-muted-foreground text-center p-3 bg-muted/50 rounded-lg">
-                  Add ${(50 - subtotal).toFixed(2)} more to get FREE shipping!
-                </div>
-              )}
-
-              <div className="space-y-3">
-                <Button className="w-full" size="lg" asChild>
-                  <Link to="/checkout">Proceed to Checkout</Link>
+                <Button className="w-full" size="lg">
+                  Proceed to Checkout
                 </Button>
-                <Button variant="outline" className="w-full" asChild>
-                  <Link to="/products">Continue Shopping</Link>
-                </Button>
-              </div>
 
-              {/* Features */}
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <div className="flex items-center space-x-2">
-                  <span className="text-green-500">✓</span>
-                  <span>Secure checkout</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-green-500">✓</span>
-                  <span>30-day returns</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-green-500">✓</span>
-                  <span>Customer support</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => navigate("/products")}
+                >
+                  Continue Shopping
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
